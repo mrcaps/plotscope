@@ -1,0 +1,110 @@
+<div id="content">
+    <h2><span class="lhead">Why:</span> Goals and Benefits</h2>
+    <div style="font-style: italic;">
+    Instant, interactive results are powerful &ndash; and we take them for granted. <br/>
+    Why aren't visualizations of cloud operations data like this, and how can we do better?
+    </div>
+    <div>
+    Here are some ideas, and the principles behind the plotscope prototype:
+    <ul>
+        <li><b>Don't Throw It Away</b>: We typically throw away monitoring data after days,
+        weeks, or months. What if I want to compare a performance blip a year ago to one from yesterday?
+        Low-granularity rollups don't allow that. Storage is cheap - keep the data!
+        </li>
+        <li><b>Interactivity</b>: Remember ten years ago, when we had to wait for MapQuest to
+        reload the entire map when we zoomed and panned? Today's plots are mostly like that.
+        We should be able to dive in to interesting parts of the data in real time.
+        </li>
+        <li><b>Run Anywhere</b>: We shouldn't be chained to a desktop application
+        or rely on a plugin. We live in an era of powerful, ubiquitous browsers
+        and platforms like <a href="http://www.cloudfoundry.com/" target="_blank">Cloud Foundry</a>.
+        </li>
+    </ul>
+    </div>
+    
+    <h2><span class="lhead">How:</span> The Tech</h2>
+    <div id="aboutcontainer" style="height:464px">
+        <div class="aboutimgs">
+            <img src="img/about/bg_ui.png" alt="UI" style="left:0px;top:0px;"/>
+            <img src="img/about/bg_app.png" alt="App" style="left:0px;top:140px;"/>
+            <img src="img/about/bg_db.png" alt="DB" style="left:0px;top:307px"/>
+        </div>
+        <div class="aboutimgs descs">
+            <img src="img/about/d5.png" alt="" id="d5" style="left:10px;top:45px;" />
+            <img src="img/about/d0.png" alt="" id="d0" style="left:159px;top:45px;" />
+            <img src="img/about/d4.png" alt="" id="d4" style="left:10px;top:197px;" />
+            <img src="img/about/d1.png" alt="" id="d1" style="left:151px;top:197px;" />
+            <img src="img/about/d3.png" alt="" id="d3" style="left:10px;top:365px;" />
+            <img src="img/about/d2.png" alt="" id="d2" style="left:128px;top:365px;" />          
+        </div>
+        <div class="aboutdesc" style="top:5px;height:130px;">
+            <div>
+            The plotting UI allows for zooming and panning of the data. It only asks for as much
+            data as it needs for the display, prefetches some area around it for panning, and maintains a cache.
+            </div>
+            <div>
+            It is built on top of <a href="http://mbostock.github.com/protovis/" target="_blank">Protovis</a>
+            and a customized version of the <a href="http://quasipartikel.at/multiselect/" target="_blank">jQuery UI Multiselect</a>
+            widget.
+            </div>
+        </div>
+        <div class="aboutdesc" style="top:145px;height:160px;">
+            <div>
+            Running on <a href="http://www.cloudfoundry.com/" target="_blank">Cloud Foundry</a>, the webapp
+            scans binary files as they are uploaded to find their time range. It computes and stores aggregates
+            (see below). The current AJAX pull from the UI could use websockets
+            once they are more widely supported.
+            </div>
+            <div>
+            The app uses <a href="http://nodejs.org/" target="_blank">node.js</a> for
+            evented IO and its native <code>Buffer</code>s for performance. 
+            </div>
+        </div>
+        <div class="aboutdesc" style="top:315px;height:145px;">
+            <div>
+            We store chunked binary files in <a href="http://www.mongodb.org/" target="_blank">MongoDB</a>'s
+            <a href="http://www.mongodb.org/display/DOCS/GridFS" target="_blank">GridFS</a>.
+            Precomputed aggregates at half, quarter, eighth, ... the granularity of the raw timeseries
+            are also stored and allow for fast access to zoomed-out views. The aggregation functions are pluggable;
+            we have included some examples for sampling, averaging, and maximum.
+            </div>
+        </div>
+    </div>
+    <script type="text/javascript">
+    var tick = 0;
+    var N_IMGS = 6;
+    function onready() {
+        step();
+    }
+    
+    function step() {
+        for (var i = 0; i < N_IMGS; ++i) {
+            var val = Math.exp( -Math.pow(Math.abs( (i+1) - ((tick/100)%(N_IMGS+2)-1) ), 2) );
+            $("#d" + i).css("opacity", 0.2+Math.min(val, 0.8));
+        }
+        tick++;
+        requestAnimationFrame(step);
+    }
+    </script>
+    
+    <h2><span class="lhead">What:</span> The Data</h2>
+    <div>
+    We've uploaded three types of data for you to try in plotscope:
+    <ul>
+        <li><b>host-*</b>: Real system monitoring data from over more than four years.
+        Each of these streams contains more than 1000x as much data as a stream from the <b>stock</b> dataset.
+        </li>
+        <li><b>stock</b>: Some public stock price history at a daily interval, to show how plotscope
+        can handle these existing datasets. This data is very small, and easily fits within a single tile.
+        </li>
+        <li><b>synth</b>: Some synthetic data in the simple plotscope binary format. Grab 
+        <a href="files/mkdata.zip">a copy of the generator program here</a> to get a sample of how to write it,
+        or for making data of your own.
+        </li>
+    </ul>   
+    </div>
+    
+    <div style="margin:10px 0px 10px 0px;font-size:90%;">
+        The node.js and MongoDB logos are used solely for nominative purposes; no endorsement of plotscope by Joyent Inc or 10Gen Inc is implied.
+    </div>
+</div>

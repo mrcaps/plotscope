@@ -1,0 +1,155 @@
+body {
+  margin: 0;
+  padding: 0;
+  font: 14px/140% "Trebuchet MS", sans-serif;
+}
+
+#titlebox {
+  position: absolute;
+  left: 50%;
+  top: -10px;
+  margin-left: -340px;
+  width: 680px;
+  height: 220px;
+  background: url('../img/piece-titlebg.png');
+  background-repeat: no-repeat;
+}
+#navbar {
+  position: fixed;
+  left: 50%;
+  top: 0px;
+  margin-left: -120px;
+  width: 425px;
+  height: 50px;
+  background: url('../img/piece-navbar.png');
+  background-repeat: no-repeat;
+}
+#titleimg {
+  position: absolute;
+  left: 40px;
+  top: 45px;
+}
+#flingtext {
+  position: absolute;
+  font-size: 20px;
+  left:90px;
+  top:165px;
+  width:300px;
+  text-align: center;
+  color: white;
+}
+
+table.navmenu {
+  position: absolute;
+  left: 25px;
+  width: 375px;
+  list-style-type: none;
+}
+table.navmenu td {
+  text-align: center;
+}
+table.navmenu td a {
+  display: block;
+  text-decoration: none;
+  color: white;
+  font-size: 25px;
+  /*line-height: 40px;*/
+  padding: 7px 0px 7px 0px;
+  font-weight: bold;
+  cursor: pointer;
+  margin: 0px 15px 0px 15px;
+}
+table.navmenu td a.sel {
+  border-bottom: 3px solid white !important;
+  color: white !important;
+  margin-bottom: -3px;
+  text-shadow: 0px 0px 1px #000, 0px 0px 3px #fff;
+}
+table.navmenu td a:hover {
+  border-bottom: 3px solid rgb(90,133,165);
+  color: #ddd;
+  margin-bottom: -3px;
+  text-shadow: 0px 0px 1px #000, 0px 0px 2px #fff;
+}
+
+#content {
+  position: absolute;
+  top: 55px;
+  left: 50%;
+  width: 600px;
+  margin-left: -300px;
+}
+
+/* page: about */
+#aboutcontainer {
+    position: relative;
+}
+
+.aboutimgs {
+    position: absolute;
+    left: 0px;
+    top: 0px;
+}
+.aboutimgs img {
+    position: absolute;
+}
+.aboutimgs.descs img {
+    opacity: 0; /* hide image descs until page load */
+}
+
+.aboutdesc {
+    position: absolute;
+    left: 265px;
+    width: 360px;
+    padding-top: 7px;
+}
+
+.lhead {
+    color: #999;
+}
+
+h2 {
+    margin: 15px 0 5px 0;
+    padding: 0;
+    text-shadow: 1px 1px 2px #999;
+}
+
+ul {
+    margin: 5px 0px 5px 0px;
+}
+
+/* page: demo */
+#fig {
+  position: relative;
+  margin: auto;
+}
+
+#fig {
+  width: 600px;
+  height: 225px;
+  margin-bottom: 8px;
+}
+
+#streamselbox {
+  padding-left: 200px;
+}
+
+#helpbox {
+  position: absolute;
+  font-size: 11px;
+  left: 800px;
+  margin-left: 15px;
+  width: 170px;
+  top: 0px;
+}
+
+#infobox {
+    padding-left: 200px;
+    margin-top: 3px;
+}
+
+.inlineicon {
+    display: inline-block !important;
+    margin-right: 3px;
+    vertical-align: text-bottom;
+}

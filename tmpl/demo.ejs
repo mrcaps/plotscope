@@ -1,0 +1,646 @@
+<div id="content" style="margin-left: -500px;">
+  <div id="fig"> 
+    <script type="text/javascript+protovis">
+    
+var allfiles = {};
+var fileslist = [];
+var selfiles = [];
+
+//map of pending cache miss queries
+var inflight = {};
+var querydx = 0;
+
+var loglevel = 0;
+var log = getLogger(1);
+
+var MAXLINES = 4;
+
+/**
+ * Do dynamic bits once static content has arrived
+ */
+$(document).ready(function() {
+    //grab list of streams
+    $.getJSON("db/list", function(data) {
+        allfiles = data;
+        buildSelectUI(allfiles);
+    });
+    
+    //build UI
+    $("#dlg-warning").dialog({
+        position: "top",
+        show: "fade",
+        hide: "fade",
+        buttons: [
+            {text: "Ok",click: function() { $(this).dialog("close"); }}
+        ],
+        autoOpen: false
+    });
+    $("#txt-nstreams").text(MAXLINES);
+    $("#info-maxstreams").hide();
+    
+    buildControlsUI();
+    
+    var dlg_w = 450;
+    $("#dlg-intro").dialog({
+        position: [($(window).width()-dlg_w)/2, 65],
+        width: dlg_w,
+        height: 150,
+        show: "drop",
+        hide: "fade",
+        resizable: false
+    });
+});
+
+var buttonsWarningShown = false;
+/**
+ * Show the warning about using mousewheel - but only once.
+ */
+function showButtonsWarning() {
+    if (!buttonsWarningShown) {
+        $("#dlg-warning").dialog("open");
+        buttonsWarningShown = true;
+    }
+}
+
+function buildControlsUI() {
+    var warningShown = false;
+    
+    $("#btn-zoomin").button({
+        icons: {primary: "ui-icon-zoomin"} 
+    }).click(function() {
+        //not really desirable - doesn't update the object's transform
+        // (so panning will be broken)
+        /*
+        var dold = x.domain();
+        var span = dold[1]-dold[0];
+        var total = 0;
+        for (var i = 1; i < 10; ++i) {
+            setTimeout(
+            (function(amt) {
+                return function() {
+                    total += span/amt;
+                    x.domain(dold[0]+total, dold[1]-total);
+                    vis.render();
+                };
+            })(Math.pow(2,i+2)), i);
+        }
+        */
+        
+        showButtonsWarning();
+        //the scene isn't built property if we call this from outside a handler
+        // so we have to use a workaround (see multizoom)
+        multizoom(eventpnl, new pv.Vector(300,100), 1.0, null, 0, [0,1]);
+    });
+    $("#btn-zoomout").button({
+       icons: {primary: "ui-icon-zoomout"}
+    }).click(function() {
+        showButtonsWarning();
+        multizoom(eventpnl, new pv.Vector(300,100), -1.0, null, 0, [0,1]);
+    });
+    $("#btn-pan").button({
+       icons: {primary: "ui-icon-arrowthick-2-e-w"},
+       disabled: true
+    });
+}
+
+function buildSelectUI(files) {
+    fileslist = [];
+    
+    for (var k in files) {
+        var v = files[k];
+        fileslist.push(v);    
+        $("#streamsel").append(
+            $("<option></option")
+                .attr("value", k)
+                .text(k)
+                .data("fileid", k)
+                .change(function() {
+                    updateLines();
+                })
+        );
+    }
+    $("#streamsel").multiselect({
+        onSort: function() { updateLines(); }
+    });
+}
+
+//jQuery UI multiselect:
+//  http://quasipartikel.at/2009/05/10/jqueryui-multiselect/
+//  http://quasipartikel.at/multiselect/
+//  or http://quasipartikel.at/multiselect_next/ for XHR-based data
+function getSelected() {
+    //not particularly beautiful, but there's no accessor to get this
+    return $("#streamselbox div.ui-multiselect ul.selected li.ui-element");
+}
+
+function updateLines() {
+    var selarr = getSelected();
+    selfiles = [];
+    if (selarr.length > MAXLINES) {
+        $("#info-maxstreams").slideDown();
+    } else {
+        $("#info-maxstreams").hide();
+    }
+    
+    yaxis1.visible(selarr.length > 0);
+    yaxis2.visible(selarr.length > 1);
+    
+    for (var i = 0; i < selarr.length; ++i) {
+        if (i >= MAXLINES) {
+            //skip it.
+        } else {
+            selfiles.push(
+                fileslist[$(selarr[i]).data("idx")]
+            );
+        }
+    }
+    if (selfiles.length > 0) {
+        $("#dlg-intro").dialog("close");
+    }
+    
+    //find minimum and maximum range
+    var xmin = Infinity, xmax = -Infinity;
+    for (var i = 0; i < selfiles.length; ++i) {
+        var f = selfiles[i];
+        xmin = Math.min(f.metadata.minx, xmin);
+        xmax = Math.max(f.metadata.maxx, xmax);
+    }
+    xdom[0] = xmin; xdom[1] = xmax;
+    
+    transform(eventpnl);
+}
+
+var YMAX = 1000000;
+var xdom = [0, 100];
+var MAXPTS = 600;
+var lblzoom = 0;
+
+/**
+ * Obtain cached data. If the cache can satisfy the bounds, return data,
+ *  otherwise return null.
+ * @param level the zoom level to query
+ * @param bnd the desired bounds
+ */
+function getcache(file, lvl, bnd) {
+    if (!file.cache) {
+        file.cache = {};
+    }
+    var lvlc = file.cache[lvl];
+    if (lvlc) {
+        if (bnd[0] < lvlc[0].x || bnd[1] > lvlc[lvlc.length-1].x) {
+            log(0, "Cache bound not satisfied at level " + lvl);
+            return null;
+        } else {
+            return lvlc;
+        }
+    } else {
+        return null;
+    }
+}
+function setcache(file, lvl, data) {
+    if (!file.cache) {
+        selfile.cache = {};
+    }
+    file.cache[lvl] = data;
+}
+
+/**
+ * Grab data from the server in the given interval
+ * @param file info object with metadata
+ * @param bnd the desired bounds
+ * @param next continuation
+ */
+function getdata(file, bnd, next) {
+    //how many points (assuming uniform density) exist within bounds?
+    var lpts = file.points * (bnd[1]-bnd[0]) / (xdom[1]-xdom[0]);
+    //compute base aggregation level
+    var lvl = Math.ceil( log2(Math.max(1, lpts / MAXPTS)) );
+    //downsample based on number of lines
+    lvl += Math.ceil(log2(selfiles.length));
+    
+    log(0, "Getting data: ", bnd, "lpts=", lpts, "lvl=", lvl);
+
+    var requestt = curms();
+
+    var ondata = function(data) {
+        log(0, "Got " + data.length + " points from " + source);
+        setcache(file, lvl, data);
+        
+        //for in-order delivery: last serviced request time
+        var lastt = file.lastt ? file.lastt : 0;
+        if (requestt < lastt) {
+            return;
+        } else {
+            file.lastt = requestt;
+        }
+        
+        var retd = [];
+        var i = Math.max(0,
+            Math.abs(pv.search(data, bnd[0], function(p) {return p.x;})) - 2);
+        var end = Math.min(data.length - 1,
+            Math.abs(pv.search(data, bnd[1], function(p) {return p.x;})) + 2);
+        
+        while (i <= end) {
+          retd.push(data[i]);
+          ++i;
+        }
+        log(0, "Range trim to " + retd.length + " points");
+
+        next(retd);
+    };
+  
+    var source = "server";
+    var cache = file.cache;
+    if (getcache(file, lvl, bnd)) {
+        source = "cache";
+        ondata(file.cache[lvl]);
+    } else {
+        var w = bnd[1] - bnd[0];
+        //prefectch padding
+        var fetchpad = w / 2;
+        //check to see if an inflight request would satisfy this query
+        var satisfied = false;
+        for (k in inflight) {
+            var q = inflight[k];
+            if (q["name"] == file.name && q["lbnd"] < bnd[0] && q["hbnd"] > bnd[1]) {
+                satisfied = true;
+            }
+        }
+        
+        if (satisfied) {
+            log(0, "Server query would be satisfied by inflight request");
+        } else {
+            log(0, "New server query");
+            var thisid = ++querydx;
+            inflight[thisid] = {
+                "name": file.name,
+                "level": lvl,
+                "lbnd": bnd[0] - fetchpad,
+                "hbnd": bnd[1] + fetchpad
+            };
+            $.getJSON("db/get", inflight[thisid], function(data) {
+                ondata(data);
+                delete inflight[thisid];
+            });
+            //retry timeout on query execution
+            setTimeout(function() {
+                delete inflight[thisid];
+            }, 100);
+        }
+    }
+}
+
+//Common plot parameters, shared x scale
+var w = 600,
+    h = 200,
+    kx = w / h,
+    ky = 1,
+    x = pv.Scale.linear(xdom[0], xdom[1]).range(0, w),
+    y = pv.Scale.linear(0, YMAX).range(0, h), //for actual data
+    y1 = pv.Scale.linear(0, YMAX).range(0, h), //for axis 1
+    y2 = pv.Scale.linear(0, YMAX).range(0, h); //for axis 2
+
+/**
+ * @param i index of canonical color
+ * @return a string color value
+ */
+function getcolor(i) {
+    return pv.Colors.category10().range()[i].color;
+}
+
+//root panel
+var vis = new pv.Panel()
+    .width(w)
+    .height(h)
+    .bottom(20)
+    .left(200)
+    .right(10)
+    .top(5);
+ 
+//Y-axis, fixed ticks
+var yaxis1 = vis.add(pv.Rule)
+    .visible(false)
+    .data(y1.ticks(10))
+    .bottom(y1)
+    .strokeStyle(function(d) d ? "#eee" : "#000");
+yaxis1.anchor("left").add(pv.Label)
+    .text(y.tickFormat)
+    .textStyle(getcolor(0));
+
+var yaxis2 = vis.add(pv.Rule)
+    .visible(false)
+    .data(y2.ticks(10))
+    .bottom(y2)
+    .left(-50)
+    .width(3)
+    .strokeStyle(function(d) d ? "#eee" : "#000");
+yaxis2.anchor("left").add(pv.Label)
+    .text(y.tickFormat)
+    .textStyle(getcolor(1));
+
+//X-axis, tick setup (and formatter function)
+vis.add(pv.Rule)
+    .data(function() x.ticks())
+    .visible(function(d) d)
+    .left(x)
+    .bottom(-5)
+    .height(5)
+  .anchor("bottom").add(pv.Label)
+    .text(function(t) {
+        var d = new Date(t*1000);
+        if (lblzoom == 0) {
+            return (d.getMonth() + 1) + "/" + (d.getFullYear() + "").substring(2);
+        } else if (lblzoom == 1) {
+            return (d.getMonth() + 1) + "/" + d.getDate();
+        } else if (lblzoom == 2) {
+            var m = d.getMinutes() + "";
+            if (m.length < 2) {
+                m = "0" + m;
+            }
+            return d.getHours() + ":" + m;
+        }
+    });
+
+var i = -1;
+var dotposx = 0;
+
+var mainpnl = vis.add(pv.Panel).overflow("hidden");
+var datapnls = [];
+for (var i = 0; i < MAXLINES; ++i) {
+    //precreate a UI view for each of 0..MAXLINES-1 streams
+    datapnls[i] = mainpnl.add(pv.Line);
+    (function(subpnl, j) {
+        subpnl.xformy = 1.0;
+        subpnl.data([{x:0,y:0}, {x:0,y:0}])
+            .bottom(1)
+            .left(function(d) { return x(d.x); })
+            .bottom(function(d) { return y(d.y*subpnl.xformy); });
+        var color = getcolor(i);
+        var anchor = subpnl.anchor("top");
+        var line = anchor.add(pv.Line)
+                .strokeStyle(color)
+                .lineWidth(2);
+        
+        //hover dot for value
+        var dot = subpnl.add(pv.Dot)
+            .visible(function() {
+                return (typeof(subpnl.curdata) != "undefined");
+            })
+            .data(function() {
+                var myy = NaN;
+                if (typeof(subpnl.curdata) != "undefined") {
+                    var data = subpnl.curdata;
+                    var dx = pv.search(data.map(function(d) d.x), dotposx);
+                    if (dx < 0) {
+                        dx = -dx - 1;
+                    }
+                    //are we off the end of the array?
+                    if (dx < data.length && dx != 0) {
+                        myy = data[dx].y; 
+                    }
+                }
+                return [{x: dotposx, y: myy}];
+            })
+            .strokeStyle(color)
+            .size(30)
+            .lineWidth(2)
+            .anchor("top").add(pv.Label)
+                .text(function(d) d.y.toFixed(0));
+    })(datapnls[i], i);
+}
+
+/**
+ * Take one zoom step on the x-axis for all plots
+ * @param pnl the panel to zoom
+ * @param v the position to zoom at (e.g. mouse position)
+ * @param k the amount to zoom (positive for in, negative for out)
+ * @param scene the built SVG scene, or null to force render if not in an event
+ * @param index the index from an event, or any if scene is null
+ * @param bound clamping for the zoom ([0,1] for full range)
+ */
+function zoom(pnl, v, k, scene, index, bound) {
+    var m = pnl.transform().translate(v.x, v.y)
+            .scale((k < 0) ? (1e3 / (1e3 - k)) : ((1e3 + k) / 1e3))
+            .translate(-v.x, -v.y);
+    
+    if (bound) {
+      m.k = Math.max(1, m.k);
+      m.x = Math.max((1 - m.k) * pnl.width(), Math.min(0, m.x));
+      m.y = Math.max((1 - m.k) * pnl.height(), Math.min(0, m.y));
+    }
+    pnl.transform(m).render();
+    if (null != scene) {
+        pv.Mark.dispatch("zoom", scene, index);
+    } else {
+        var t = pnl.transform().invert();
+        var xw = xdom[1] - xdom[0];
+        var bnd = [t.x / w * xw, (t.k + t.x / w) * xw];
+        x.domain(bnd[0]+xdom[0], bnd[1]+xdom[0]);
+        vis.render();
+    }
+}
+
+function multizoom(pnl, v, k, scene, index, bound) {
+    for (var i = 1; i < 10; ++i) {
+        setTimeout(
+        (function(amt) {
+            return function() {
+                zoom(pnl, v, amt * 500 * k, scene, index, [0,1]);
+            };
+        })(1 / i), i * 20);
+    }
+}
+
+function mousemove() {
+    var mouse = this.mouse(),
+        m = this.transform();
+        k = 1.0 / (m.k * this.scale);
+    
+    dotposx = x.invert(mouse.x * m.k + m.x);
+    vis.render();
+}
+
+//mouse wheel zoom is much faster in Firefox
+//no obvious way to get this with feature detection
+var ZOOM_MULT = $.browser.mozilla ? 0.15 : 1;
+
+//capture mouse events in a separate panel to avoid flicker
+var eventpnl = vis.add(pv.Panel);
+eventpnl.events("all")
+  .event("dblclick", function() {
+    var that = this;
+    var scene = that.scene;
+    var index = that.index;
+    var v = this.mouse();
+    multizoom(that, v, 1.0, scene, index, [0,1]);
+  })
+  .event("mousedown", pv.Behavior.pan().bound([0, xdom[1]-xdom[0]]))
+  .event("mousewheel", function() {
+    zoom(this,
+         this.mouse(),
+         Math.min(1000, pv.event.wheel*ZOOM_MULT),
+         this.scene,
+         this.index,
+         [0,1]);
+  }) 
+  .event("pan", function() {transform(this);})
+  .event("zoom", function() {transform(this);})
+  .event("mousemove", mousemove);
+
+var leftlabel = vis.add(pv.Label).bottom(3).left(3).textAlign("left");
+var rightlabel = vis.add(pv.Label).bottom(3).right(3).textAlign("right");
+
+var T_SECOND = 1;
+var T_MINUTE = T_SECOND*60;
+var T_HOUR = T_MINUTE*60;
+var T_DAY = T_HOUR*24;
+var T_MONTH = T_DAY*30;
+var T_YEAR = T_DAY*365;
+
+function fulldate(t) {
+    var d = new Date(t*1000);
+    return (d.getMonth() + 1) + "/" + d.getDate() + "/" + (d.getFullYear() + "").substring(2);
+}
+
+/**
+ * After a UI transform, compute new range and obtain data for all selfiles
+ * @param obj the transformed panel.
+ */
+function transform(obj) {
+    var t = obj.transform().invert();
+    var xw = xdom[1] - xdom[0];
+    var bnd = [t.x / w * xw, (t.k + t.x / w) * xw];
+    bnd[0] = bnd[0] + xdom[0];
+    bnd[1] = bnd[1] + xdom[0];
+    var bndw = bnd[1] - bnd[0];
+    lblzoom = 0;
+    if (bndw < T_YEAR * 2) {
+        lblzoom = 1;
+    }
+    if (bndw < T_DAY * 2) {
+        lblzoom = 2;
+    }
+    
+    leftlabel.text(fulldate(bnd[0]));
+    rightlabel.text(fulldate(bnd[1]));
+    
+    var nloaded = 0;
+    
+    for (var i = selfiles.length; i < MAXLINES; ++i) {
+        delete datapnls[i].curdata;
+        datapnls[i].data([{x:0,y:0},{x:0,y:0}]);
+    }
+    
+    var finish = function() {
+        x.domain(bnd[0], bnd[1]);
+        //y.domain(t.y / h * 2 * ky - ky, (t.k + t.y / h) * 2 * ky - ky);
+
+        var tstart = curms();
+        vis.render();    
+        log(2, "renderdone in ", curms() - tstart);        
+    };
+    
+    var AUTOSCALE = true;
+    
+    for (var i = 0; i < selfiles.length; ++i) {
+        (function(j) {
+            var file = selfiles[j];
+            getdata(file, bnd, function(dta) {
+                var pnl = datapnls[j];
+                ++nloaded;
+                
+                if (dta.length == 0) {
+                    return;
+                }
+                
+                var xformy = 1;
+                if (AUTOSCALE) {
+                    var maxval = 1;
+                    for (var foo = 0; foo < dta.length-1; foo++) {
+                        maxval = Math.max(maxval, dta[foo].y);
+                    }
+
+                    xformy = YMAX/maxval;
+                } else {
+                    if (file.metadata.scale) {
+                        xformy = file.metadata.scale;
+                    }
+                }
+                
+                if (dta.length >= 2 && dta[dta.length-1].x < dta[dta.length-2].x) {
+                    dta[dta.length-1].x = dta[dta.length-2].x+1;
+                }
+                
+                pnl.curdata = dta;
+                pnl.data(dta);
+
+                pnl.xformy = xformy;
+                if (j == 0) {
+                    y1 = pv.Scale.linear(0, YMAX/xformy).range(0, h);
+                    yaxis1.data(y1.ticks(10)).bottom(y1);
+                } else if (j == 1) {
+                    y2 = pv.Scale.linear(0, YMAX/xformy).range(0, h);
+                    yaxis2.data(y2.ticks(10)).bottom(y2);
+                }
+                
+                if (nloaded == selfiles.length) {
+                    finish();
+                }
+            });
+        })(i);
+    }
+    
+    if (selfiles.length == 0) {
+        finish();
+    }
+}
+
+function scaleData(dta, factor) {
+    var dtanew = new Array(dta.length);
+    for (var i = 0; i < dta.length; ++i) {
+        dtanew[i] = {x: dta[i].x, y: dta[i].y * factor};
+    }
+    return dtanew;
+}
+
+vis.render();
+    </script> 
+  </div>
+  <div id="infobox">
+    <div id="info-maxstreams">
+        <span class="ui-icon ui-icon-alert inlineicon"></span>Warning: displaying a maximum of <span id="txt-nstreams">?</span> streams
+    </div>
+  </div>
+  <div id="streamselbox">
+    <select id="streamsel" style="width: 600px; height: 150px;" class="multiselect" multiple="multiple">
+    </select>
+  </div>
+  <div id="helpbox">
+    <div style="border-bottom: 1px solid #ccc">
+        If you don't have a mousewheel or touchpad, use these buttons:
+    </div>
+    <div style="margin-top: 8px;">
+        <div><button id="btn-zoomin">Zoom&nbsp;In</button></div>
+        <div>(mousewheel/double&nbsp;click)</div>
+    </div>
+    <div>
+        <div><button id="btn-zoomout">Zoom&nbsp;Out</button></div>
+        <div>(mousewheel)</div>
+    </div>
+    <div>
+        <div><button id="btn-pan">Pan&nbsp;Left/Right</button></div>
+        <div>(click&nbsp;and&nbsp;drag)</div>
+    </div>   
+  </div>
+  <div id="dlg-intro" title="Getting Started">
+    <p>
+        Just double-click or drag some data streams into the left list box below.
+        Control the plot with your mouse buttons and wheel - see right.
+    </p>
+  </div>
+  <div id="dlg-warning" title="Please Note">
+    <p>
+        If you have a mousewheel or touchpad, use it in preference to these buttons!
+    </p>
+  </div>
+</div>

@@ -1,0 +1,14 @@
+For binary (ss machine) data:
+
+    cat ss90head | python ssmachine.py tsdb test.txt
+    
+    cat ss90head | python ssmachine.py bin ss90head.bin
+    
+    Notes:
+    wc -l ss90
+    1784935 lines
+        1 timestamp
+        15 metrics
+        
+    
+    cat stock-vmw-reversed.csv | python csv.py tsdb test.txt 0:ymd 1:mult:100 | head
