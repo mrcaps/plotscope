@@ -1,0 +1,13 @@
+--- 
+applications: 
+- name: plotscope
+  memory: 128M
+  instances: 1
+  url: plotscope.cfapps.io
+  path: .
+  services: 
+    mongolab-plotscope: 
+      label: mongolab
+      provider: mongolab
+      version: n/a
+      plan: sandbox

@@ -2,9 +2,9 @@
  * Database driver
  * @author ishafer
  */
-require.paths.unshift("./node_modules");
-require.paths.unshift("./public/js");
-require.paths.unshift(".");
+//require.paths.unshift("./node_modules");
+//require.paths.unshift("./public/js");
+//require.paths.unshift(".");
 
 /*
 Our DB options on cloudfoundry: Redis, MySQL, MongoDB
@@ -15,7 +15,7 @@ Why not MySQL? Our data is schemaless timeseries data.
 */
 
 var m = require("mongodb"),
-    log = require("log").getLogger(0),
+    log = require("./public/js/log").getLogger(0),
     sys = require("sys");
 
 //thanks https://github.com/gatesvp/cloudfoundry_node_mongodb/blob/master/app.js.2

@@ -2,29 +2,33 @@
  * Main application controller
  * @author ishafer
  */
-require.paths.unshift("./node_modules");
-require.paths.unshift("./public/js");
-require.paths.unshift(".");
+//require.paths.unshift("./node_modules");
+//require.paths.unshift("./public/js");
+//require.paths.unshift(".");
 
 var sys = require("sys"),
     express = require("express"),
-    db = require("mydb"),
+    engine = require("ejs-locals"),
+    db = require("./mydb"),
     formidable = require("formidable"),
-    log = require("log").getLogger(0),
-    utils = require("utils");
+    log = require("./public/js/log").getLogger(0),
+    utils = require("./public/js/utils");
     
 String.prototype.endsWith = function(suffix) {
     return this.indexOf(suffix, this.length - suffix.length) !== -1;
 };
     
-var app = express.createServer();
+var app = express();
 app.use(express.cookieParser());
 app.use(express.session({secret: "proud in the cloud foundry"}));
 app.use(app.router);
 app.use(express.static(__dirname + "/public"));
 
+app.engine("ejs", engine);
+
 app.configure(function() {
     app.set("views", __dirname + "/tmpl");
+    app.set("view engine", "ejs");
 });
 
 /**
