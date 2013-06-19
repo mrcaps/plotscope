@@ -20,14 +20,8 @@ If it doesn't, run `mongod`; the db shell is accessible as `mongo` for testing.
 ### node.js
 The [installation page](https://github.com/joyent/node/wiki/Installation) is helpful here.
 Beware that node is very in-flux, and building from a bleeding-edge version will probably
-cause sadness. Plotscope has been tested and works on v0.4.8 (`git checkout v0.4.8`).
-FWIW, `make install` added `node` to `/opt/local/bin` for v0.4.8; it looks like newer versions
-need the
+cause sadness. Plotscope has been tested on v0.10.12.
 
-    echo 'export PATH=$HOME/local/node/bin:$PATH' >> ~/.profile
-    echo 'export NODE_PATH=$HOME/local/node:$HOME/local/node/lib/node_modules' >> ~/.profile
-    source ~/.profile
-    
 ## Build/Run
 Just do a
     
