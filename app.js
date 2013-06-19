@@ -300,6 +300,6 @@ app.post("/db/add/:name/:scale", function(req, res) {
     form.parse(req);
 });
 
-var myport = process.env.VMC_APP_PORT || 3000;
+var myport = process.env.VCAP_APP_PORT || 3000;
 app.listen(myport);
 sys.puts("Server running on port " + myport);

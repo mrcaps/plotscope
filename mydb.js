@@ -21,7 +21,8 @@ var m = require("mongodb"),
 //thanks https://github.com/gatesvp/cloudfoundry_node_mongodb/blob/master/app.js.2
 if(process.env.VCAP_SERVICES){
   var env = JSON.parse(process.env.VCAP_SERVICES);
-  exports.mongo = env["mongodb-1.8"][0]["credentials"];
+  //exports.mongo = env["mongodb-1.8"][0]["credentials"];
+  exports.mongo = env["mongolab-n/a"][0]["credentials"];
 }
 else{
   exports.mongo = {"hostname":"localhost","port":27017,"username":"",
@@ -32,10 +33,11 @@ var generate_mongo_url = function(obj){
   obj.port = (obj.port || 27017);
   obj.db = (obj.db || "test");
 
-  if(obj.username && obj.password){
+  if (obj.uri) {
+    return obj.uri;
+  } else if (obj.username && obj.password) {
     return "mongodb://" + obj.username + ":" + obj.password + "@" + obj.hostname + ":" + obj.port + "/" + obj.db;
-  }
-  else{
+  } else{
     return "mongodb://" + obj.hostname + ":" + obj.port + "/" + obj.db;
   }
 }
@@ -229,7 +231,7 @@ exports.TStore.prototype.writeBuf = function(buf, next) {
             }
             log(0, "Writing buffer len=" + bwrite.length +
                 " minx=" + self.minx + " maxx=" + self.maxx);
-            self.gs.writeBuffer(bwrite, false, function() {
+            self.gs.write(bwrite, false, function() {
                 self.writing = false;
                 next();
             });
